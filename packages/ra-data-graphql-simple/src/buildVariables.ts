@@ -19,8 +19,15 @@ import { IntrospectionResult, IntrospectedResource } from 'ra-data-graphql';
 
 import getFinalType from './getFinalType';
 import isList from './isList';
+import {
+    FieldNameConventions,
+    FieldNameConventionEnum,
+} from './fieldNameConventions';
 
-export default (introspectionResults: IntrospectionResult) => (
+export default (
+    introspectionResults: IntrospectionResult,
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
+) => (
     resource: IntrospectedResource,
     raFetchMethod: string,
     params: any,
@@ -34,22 +41,20 @@ export default (introspectionResults: IntrospectionResult) => (
 
     switch (raFetchMethod) {
         case GET_LIST: {
-            return buildGetListVariables(introspectionResults)(
-                resource,
-                raFetchMethod,
-                preparedParams
-            );
+            return buildGetListVariables(
+                introspectionResults,
+                fieldNameConvention
+            )(resource, raFetchMethod, preparedParams);
         }
         case GET_MANY:
             return {
                 filter: { ids: preparedParams.ids },
             };
         case GET_MANY_REFERENCE: {
-            let variables = buildGetListVariables(introspectionResults)(
-                resource,
-                raFetchMethod,
-                preparedParams
-            );
+            let variables = buildGetListVariables(
+                introspectionResults,
+                fieldNameConvention
+            )(resource, raFetchMethod, preparedParams);
 
             variables.filter = {
                 ...variables.filter,
@@ -65,7 +70,7 @@ export default (introspectionResults: IntrospectionResult) => (
             };
         case CREATE:
         case UPDATE: {
-            return buildCreateUpdateVariables(
+            return buildCreateUpdateVariables(fieldNameConvention)(
                 resource,
                 raFetchMethod,
                 preparedParams,
@@ -177,17 +182,25 @@ const prepareParams = (
     return result;
 };
 
-const buildGetListVariables = (introspectionResults: IntrospectionResult) => (
-    resource: IntrospectedResource,
-    raFetchMethod: string,
-    params: any
-) => {
+const buildGetListVariables = (
+    introspectionResults: IntrospectionResult,
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
+) => (resource: IntrospectedResource, raFetchMethod: string, params: any) => {
+    const perPageKey = FieldNameConventions[
+        fieldNameConvention
+    ].strWithConvention('perPage');
+    const sortFieldKey = FieldNameConventions[
+        fieldNameConvention
+    ].strWithConvention('sortField');
+    const sortOrderKey = FieldNameConventions[
+        fieldNameConvention
+    ].strWithConvention('sortOrder');
+
     let variables: Partial<{
         filter: { [key: string]: any };
-        page: number;
-        perPage: number;
-        sortField: string;
-        sortOrder: string;
+        pagination: { [key: string]: number };
+        sort: { [key: string]: number };
+        meta?: object;
     }> = { filter: {} };
     if (params.filter) {
         variables.filter = Object.keys(params.filter).reduce((acc, key) => {
@@ -275,20 +288,28 @@ const buildGetListVariables = (introspectionResults: IntrospectionResult) => (
         }, {});
     }
 
-    if (params.pagination) {
-        variables.page = parseInt(params.pagination.page, 10) - 1;
-        variables.perPage = parseInt(params.pagination.perPage, 10);
-    }
+    if (params.pagination)
+        variables.pagination = {
+            page: parseInt(params.pagination.page, 10) - 1,
+            [perPageKey]: parseInt(params.pagination.perPage, 10),
+        };
 
-    if (params.sort) {
-        variables.sortField = params.sort.field;
-        variables.sortOrder = params.sort.order;
-    }
+    if (params.sort)
+        variables.sort = {
+            [sortFieldKey]: params.sort.field,
+            [sortOrderKey]: params.sort.order,
+        };
+
+    variables = { ...variables, ...variables.pagination, ...variables.sort };
+    delete variables.pagination;
+    delete variables.sort;
 
     return variables;
 };
 
 const buildCreateUpdateVariables = (
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
+) => (
     resource: IntrospectedResource,
     raFetchMethod,
     { id, data }: any,
@@ -297,23 +318,41 @@ const buildCreateUpdateVariables = (
     Object.keys(data).reduce(
         (acc, key) => {
             if (Array.isArray(data[key])) {
-                const arg = queryType.args.find(a => a.name === `${key}Ids`);
+                const arg = queryType.args.find(
+                    a =>
+                        a.name ===
+                        FieldNameConventions[
+                            fieldNameConvention
+                        ].strWithConvention(`${key}Ids`)
+                );
 
                 if (arg) {
                     return {
                         ...acc,
-                        [`${key}Ids`]: data[key].map(({ id }) => id),
+                        [FieldNameConventions[
+                            fieldNameConvention
+                        ].strWithConvention(`${key}Ids`)]: data[key].map(
+                            ({ id }) => id
+                        ),
                     };
                 }
             }
 
             if (typeof data[key] === 'object') {
-                const arg = queryType.args.find(a => a.name === `${key}Id`);
+                const arg = queryType.args.find(
+                    a =>
+                        a.name ===
+                        FieldNameConventions[
+                            fieldNameConvention
+                        ].strWithConvention(`${key}Id`)
+                );
 
                 if (arg) {
                     return {
                         ...acc,
-                        [`${key}Id`]: data[key].id,
+                        [FieldNameConventions[
+                            fieldNameConvention
+                        ].strWithConvention(`${key}Id`)]: data[key].id,
                     };
                 }
             }

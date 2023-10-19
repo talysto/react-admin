@@ -1,3 +1,4 @@
+import { TypeKind } from 'graphql';
 import {
     GET_LIST,
     GET_MANY,
@@ -7,6 +8,7 @@ import {
     DELETE,
 } from 'ra-core';
 import buildVariables from './buildVariables';
+import { FieldNameConventionEnum } from './fieldNameConventions';
 
 describe('buildVariables', () => {
     const introspectionResult = {
@@ -17,6 +19,16 @@ describe('buildVariables', () => {
             },
         ],
     };
+
+    const introspectionResultSnake = {
+        types: [
+            {
+                name: 'PostFilter',
+                inputFields: [{ name: 'post_status' }],
+            },
+        ],
+    };
+
     describe('GET_LIST', () => {
         it('returns correct variables', () => {
             const params = {
@@ -50,6 +62,33 @@ describe('buildVariables', () => {
                 sortOrder: 'DESC',
             });
         });
+
+        it('returns correct variables for snake field name convention', () => {
+            const params = {
+                filter: {
+                    ids: ['foo1', 'foo2'],
+                    post_status: ['draft', 'published'],
+                },
+                pagination: { page: 10, perPage: 10 },
+                sort: { field: 'sortField', order: 'DESC' },
+            };
+
+            expect(
+                buildVariables(
+                    introspectionResultSnake,
+                    FieldNameConventionEnum.SNAKE
+                )({ type: { name: 'Post', fields: [] } }, GET_LIST, params, {})
+            ).toEqual({
+                filter: {
+                    ids: ['foo1', 'foo2'],
+                    post_status: ['draft', 'published'],
+                },
+                page: 9,
+                per_page: 10,
+                sort_field: 'sortField',
+                sort_order: 'DESC',
+            });
+        });
     });
 
     describe('CREATE', () => {
@@ -75,6 +114,30 @@ describe('buildVariables', () => {
             ).toEqual({
                 authorId: 'author1',
                 tagsIds: ['tag1', 'tag2'],
+                title: 'Foo',
+            });
+        });
+
+        it('returns correct variables for snake fieldname conventions', () => {
+            const params = {
+                data: {
+                    author: { id: 'author1' },
+                    tags: [{ id: 'tag1' }, { id: 'tag2' }],
+                    title: 'Foo',
+                },
+            };
+            const queryType = {
+                args: [{ name: 'tags_ids' }, { name: 'author_id' }],
+            };
+
+            expect(
+                buildVariables(
+                    introspectionResultSnake,
+                    FieldNameConventionEnum.SNAKE
+                )({ type: { name: 'Post' } }, CREATE, params, queryType)
+            ).toEqual({
+                author_id: 'author1',
+                tags_ids: ['tag1', 'tag2'],
                 title: 'Foo',
             });
         });
@@ -105,6 +168,32 @@ describe('buildVariables', () => {
                 id: 'post1',
                 authorId: 'author1',
                 tagsIds: ['tag1', 'tag2'],
+                title: 'Foo',
+            });
+        });
+
+        it('returns correct variables for snake fieldname conventions', () => {
+            const params = {
+                id: 'post1',
+                data: {
+                    author: { id: 'author1' },
+                    tags: [{ id: 'tag1' }, { id: 'tag2' }],
+                    title: 'Foo',
+                },
+            };
+            const queryType = {
+                args: [{ name: 'tags_ids' }, { name: 'author_id' }],
+            };
+
+            expect(
+                buildVariables(
+                    introspectionResultSnake,
+                    FieldNameConventionEnum.SNAKE
+                )({ type: { name: 'Post' } }, UPDATE, params, queryType)
+            ).toEqual({
+                id: 'post1',
+                author_id: 'author1',
+                tags_ids: ['tag1', 'tag2'],
                 title: 'Foo',
             });
         });
@@ -151,6 +240,28 @@ describe('buildVariables', () => {
                 perPage: 10,
                 sortField: 'name',
                 sortOrder: 'ASC',
+            });
+        });
+
+        it('returns correct variables for snake fieldname conventions', () => {
+            const params = {
+                target: 'author_id',
+                id: 'author1',
+                pagination: { page: 1, perPage: 10 },
+                sort: { field: 'name', order: 'ASC' },
+            };
+
+            expect(
+                buildVariables(
+                    introspectionResultSnake,
+                    FieldNameConventionEnum.SNAKE
+                )({ type: { name: 'Post' } }, GET_MANY_REFERENCE, params, {})
+            ).toEqual({
+                filter: { author_id: 'author1' },
+                page: 0,
+                per_page: 10,
+                sort_field: 'name',
+                sort_order: 'ASC',
             });
         });
     });
