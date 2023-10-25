@@ -209,6 +209,18 @@ Pass the introspection options to the `buildApolloProvider` function:
 buildApolloProvider({ introspection: introspectionOptions });
 ```
 
+### Support a snake_case GraphQL API interface
+
+If your GraphQL API Interface expects snake_case field name conventions, simply provide the `FieldNameConventionEnum.SNAKE` as an option to `buildGraphQLProvider`.
+
+```js
+import { FieldNameConventionEnum } from 'ra-data-graphql-simple'
+
+buildGraphQLProvider({ fieldNameConvention: FieldNameConventionEnum.SNAKE });
+```
+
+The default field name convention is CamelCase.
+
 ## `DELETE_MANY` and `UPDATE_MANY` Optimizations
 
 Your GraphQL backend may not allow multiple deletions or updates in a single query. This provider simply makes multiple requests to handle those. This is obviously not ideal but can be alleviated by supplying your own `ApolloClient` which could use the [apollo-link-batch-http](https://www.apollographql.com/docs/link/links/batch-http.html) link if your GraphQL backend support query batching.

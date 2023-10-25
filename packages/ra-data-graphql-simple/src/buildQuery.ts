@@ -2,12 +2,16 @@ import { IntrospectionResult, BuildQuery } from 'ra-data-graphql';
 import buildVariables from './buildVariables';
 import buildGqlQuery from './buildGqlQuery';
 import getResponseParser from './getResponseParser';
+import { FieldNameConventionEnum } from './fieldNameConventions';
 
-export const buildQueryFactory = (
+export const buildQueryFactory: any = (
     buildVariablesImpl = buildVariables,
     buildGqlQueryImpl = buildGqlQuery,
     getResponseParserImpl = getResponseParser
-) => (introspectionResults: IntrospectionResult): BuildQuery => {
+) => (
+    introspectionResults: IntrospectionResult,
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
+): BuildQuery => {
     const knownResources = introspectionResults.resources.map(r => r.type.name);
 
     const buildQuery: BuildQuery = (raFetchType, resourceName, params) => {
@@ -31,18 +35,14 @@ export const buildQueryFactory = (
             );
         }
 
-        const variables = buildVariablesImpl(introspectionResults)(
-            resource,
-            raFetchType,
-            params,
-            queryType
-        );
-        const query = buildGqlQueryImpl(introspectionResults)(
-            resource,
-            raFetchType,
-            queryType,
-            variables
-        );
+        const variables = buildVariablesImpl(
+            introspectionResults,
+            fieldNameConvention
+        )(resource, raFetchType, params, queryType);
+        const query = buildGqlQueryImpl(
+            introspectionResults,
+            fieldNameConvention
+        )(resource, raFetchType, queryType, variables);
         const parseResponse = getResponseParserImpl(introspectionResults)(
             raFetchType,
             resource,
