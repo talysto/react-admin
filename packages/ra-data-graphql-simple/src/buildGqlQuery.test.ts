@@ -16,6 +16,7 @@ import buildGqlQuery, {
     buildArgs,
     buildFields,
 } from './buildGqlQuery';
+import { FieldNameConventionEnum } from './fieldNameConventions';
 
 describe('buildArgs', () => {
     it('returns an empty array when query does not have any arguments', () => {
@@ -31,6 +32,30 @@ describe('buildArgs', () => {
                 )
             )
         ).toEqual(['foo: $foo']);
+    });
+
+    it('returns an array of args correctly filtered when query has camel arguments', () => {
+        expect(
+            print(
+                buildArgs(
+                    { args: [{ name: 'fooFull' }, { name: 'barFull' }] },
+                    { fooFull: 'foo_value' },
+                    FieldNameConventionEnum.CAMEL
+                )
+            )
+        ).toEqual(['fooFull: $fooFull']);
+    });
+
+    it('returns an array of args correctly filtered when query has snake arguments and fieldNameConvention is snake', () => {
+        expect(
+            print(
+                buildArgs(
+                    { args: [{ name: 'foo_full' }, { name: 'bar_full' }] },
+                    { foo_full: 'foo_value' },
+                    FieldNameConventionEnum.SNAKE
+                )
+            )
+        ).toEqual(['foo_full: $foo_full']);
     });
 });
 
@@ -76,6 +101,92 @@ describe('buildApolloArgs', () => {
                         ],
                     },
                     { foo: 'foo_value', barId: 100, barIds: [101, 102] }
+                )
+            )
+        ).toEqual(['$foo: Int!', '$barId: ID', '$barIds: [ID!]']);
+    });
+
+    it('returns an array of args correctly filtered when query has snake arguments and FE fieldNameConvention is snake', () => {
+        expect(
+            print(
+                buildApolloArgs(
+                    {
+                        args: [
+                            {
+                                name: 'foo',
+                                type: {
+                                    kind: TypeKind.NON_NULL,
+                                    ofType: {
+                                        kind: TypeKind.SCALAR,
+                                        name: 'Int',
+                                    },
+                                },
+                            },
+                            {
+                                name: 'bar_id',
+                                type: { kind: TypeKind.SCALAR, name: 'ID' },
+                            },
+                            {
+                                name: 'bar_ids',
+                                type: {
+                                    kind: TypeKind.LIST,
+                                    ofType: {
+                                        kind: TypeKind.NON_NULL,
+                                        ofType: {
+                                            kind: TypeKind.SCALAR,
+                                            name: 'ID',
+                                        },
+                                    },
+                                },
+                            },
+                            { name: 'bar' },
+                        ],
+                    },
+                    { foo: 'foo_value', bar_id: 100, bar_ids: [101, 102] },
+                    FieldNameConventionEnum.SNAKE
+                )
+            )
+        ).toEqual(['$foo: Int!', '$bar_id: ID', '$bar_ids: [ID!]']);
+    });
+
+    it('returns an array of args correctly filtered when query has camel arguments and FE fieldNameConvention is camel', () => {
+        expect(
+            print(
+                buildApolloArgs(
+                    {
+                        args: [
+                            {
+                                name: 'foo',
+                                type: {
+                                    kind: TypeKind.NON_NULL,
+                                    ofType: {
+                                        kind: TypeKind.SCALAR,
+                                        name: 'Int',
+                                    },
+                                },
+                            },
+                            {
+                                name: 'barId',
+                                type: { kind: TypeKind.SCALAR, name: 'ID' },
+                            },
+                            {
+                                name: 'barIds',
+                                type: {
+                                    kind: TypeKind.LIST,
+                                    ofType: {
+                                        kind: TypeKind.NON_NULL,
+                                        ofType: {
+                                            kind: TypeKind.SCALAR,
+                                            name: 'ID',
+                                        },
+                                    },
+                                },
+                            },
+                            { name: 'bar' },
+                        ],
+                    },
+                    { foo: 'foo_value', barId: 100, barIds: [101, 102] },
+                    FieldNameConventionEnum.CAMEL
                 )
             )
         ).toEqual(['$foo: Int!', '$barId: ID', '$barIds: [ID!]']);
@@ -444,6 +555,21 @@ describe('buildGqlQuery', () => {
         ],
     };
 
+    const introspectionResultsSnake = {
+        resources: [{ type: { name: 'resourceType' } }],
+        types: [
+            {
+                name: 'linkedType',
+                fields: [
+                    {
+                        name: 'foo_full',
+                        type: { kind: TypeKind.SCALAR, name: 'bar' },
+                    },
+                ],
+            },
+        ],
+    };
+
     const resource = {
         type: {
             fields: [
@@ -456,6 +582,26 @@ describe('buildGqlQuery', () => {
                 {
                     type: { kind: TypeKind.OBJECT, name: 'resourceType' },
                     name: 'resource',
+                },
+            ],
+        },
+    };
+
+    const resourceSnake = {
+        type: {
+            fields: [
+                { type: { kind: TypeKind.SCALAR, name: '' }, name: 'foo_full' },
+                {
+                    type: { kind: TypeKind.SCALAR, name: '_foo' },
+                    name: 'foo1_full',
+                },
+                {
+                    type: { kind: TypeKind.OBJECT, name: 'linkedType' },
+                    name: 'linked_full',
+                },
+                {
+                    type: { kind: TypeKind.OBJECT, name: 'resourceType' },
+                    name: 'resource_full',
                 },
             ],
         },
@@ -524,8 +670,32 @@ describe('buildGqlQuery', () => {
             },
         ],
     };
+    const queryTypeSnake = {
+        name: 'all_command',
+        args: [
+            {
+                name: 'foo_full',
+                type: {
+                    kind: TypeKind.NON_NULL,
+                    ofType: { kind: TypeKind.SCALAR, name: 'Int' },
+                },
+            },
+            {
+                name: 'bar_id',
+                type: { kind: TypeKind.SCALAR },
+            },
+            {
+                name: 'bar_ids',
+                type: { kind: TypeKind.SCALAR },
+            },
+            { name: 'bar' },
+        ],
+    };
 
     const params = { foo: 'foo_value' };
+
+    const paramsCamel = { fooFull: 'foo_value' };
+    const paramsSnake = { foo_full: 'foo_value' };
 
     it('returns the correct query for GET_LIST', () => {
         expect(
@@ -549,6 +719,33 @@ describe('buildGqlQuery', () => {
     }
   }
   total: _allCommandMeta(foo: $foo) {
+    count
+  }
+}
+`
+        );
+    });
+
+    it('returns the correct query for GET_LIST with snake query args and snake FE fieldNameConvention', () => {
+        expect(
+            print(
+                buildGqlQuery(
+                    introspectionResults,
+                    FieldNameConventionEnum.SNAKE
+                )(resourceSnake, GET_LIST, queryTypeSnake, paramsSnake)
+            )
+        ).toEqual(
+            `query all_command($foo_full: Int!) {
+  items: all_command(foo_full: $foo_full) {
+    foo_full
+    linked_full {
+      foo
+    }
+    resource_full {
+      id
+    }
+  }
+  total: _all_command_meta(foo_full: $foo_full) {
     count
   }
 }

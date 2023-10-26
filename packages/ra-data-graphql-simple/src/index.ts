@@ -2,13 +2,34 @@ import merge from 'lodash/merge';
 import buildDataProvider, {
     BuildQueryFactory,
     Options,
+    introspectSchema,
+    IntrospectionOptions,
+    IntrospectionResult,
     defaultOptions as baseDefaultOptions,
 } from 'ra-data-graphql';
-import { DELETE_MANY, DataProvider, Identifier, UPDATE_MANY } from 'ra-core';
-import pluralize from 'pluralize';
+import {
+    DataProvider,
+    Identifier,
+    DELETE_MANY,
+    GET_LIST,
+    GET_ONE,
+    GET_MANY,
+    GET_MANY_REFERENCE,
+    CREATE,
+    UPDATE,
+    DELETE,
+    UPDATE_MANY,
+} from 'ra-core';
 
 import defaultBuildQuery from './buildQuery';
+import {
+    FieldNameConventions,
+    FieldNameConventionEnum,
+} from './fieldNameConventions';
+
 import { DataProviderExtension, DataProviderExtensions } from './extensions';
+
+export { FieldNameConventionEnum };
 
 export const buildQuery = defaultBuildQuery;
 export { buildQueryFactory } from './buildQuery';
@@ -16,37 +37,76 @@ export { default as buildGqlQuery } from './buildGqlQuery';
 export { default as buildVariables } from './buildVariables';
 export { default as getResponseParser } from './getResponseParser';
 
-const defaultOptions = {
-    ...baseDefaultOptions,
-    buildQuery: defaultBuildQuery,
+const buildIntrospection = (
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
+) => {
+    const introspection = {
+        operationNames: {
+            [GET_LIST]: resource =>
+                FieldNameConventions[fieldNameConvention][GET_LIST](resource),
+            [GET_ONE]: resource =>
+                FieldNameConventions[fieldNameConvention][GET_ONE](resource),
+            [GET_MANY]: resource =>
+                FieldNameConventions[fieldNameConvention][GET_MANY](resource),
+            [GET_MANY_REFERENCE]: resource =>
+                FieldNameConventions[fieldNameConvention][GET_MANY_REFERENCE](
+                    resource
+                ),
+            [CREATE]: resource =>
+                FieldNameConventions[fieldNameConvention][CREATE](resource),
+            [UPDATE]: resource =>
+                FieldNameConventions[fieldNameConvention][UPDATE](resource),
+            [DELETE]: resource =>
+                FieldNameConventions[fieldNameConvention][DELETE](resource),
+            [DELETE_MANY]: resource =>
+                FieldNameConventions[fieldNameConvention][DELETE_MANY](
+                    resource
+                ),
+            [UPDATE_MANY]: resource =>
+                FieldNameConventions[fieldNameConvention][UPDATE_MANY](
+                    resource
+                ),
+        },
+        exclude: undefined,
+        include: undefined,
+    };
+
+    return introspection;
 };
 
-export { defaultOptions, DataProviderExtensions };
-
-const bulkActionOperationNames = {
-    [DELETE_MANY]: resource => `delete${pluralize(resource.name)}`,
-    [UPDATE_MANY]: resource => `update${pluralize(resource.name)}`,
+export {
+    introspectSchema,
+    IntrospectionOptions,
+    buildIntrospection,
+    DataProviderExtensions,
 };
 
-export default (
-    options: Omit<Options, 'buildQuery'> & {
-        buildQuery?: BuildQueryFactory;
-        bulkActionsEnabled?: boolean;
-        extensions?: DataProviderExtension[];
-    }
-): Promise<DataProvider> => {
+export type DataProviderOptions = Omit<Options, 'buildQuery'> & {
+    buildQuery?: BuildQueryFactory;
+    bulkActionsEnabled?: boolean;
+    extensions?: DataProviderExtension[];
+    fieldNameConvention?: FieldNameConventionEnum;
+    resolveIntrospection?: typeof introspectSchema;
+};
+
+export default (options: DataProviderOptions = {}): Promise<DataProvider> => {
     const {
         bulkActionsEnabled = false,
         extensions = [],
+        fieldNameConvention = FieldNameConventionEnum.CAMEL,
         ...customOptions
     } = options;
+    const defaultOptions = {
+        ...baseDefaultOptions,
+        buildQuery: (introspectionResults: IntrospectionResult) =>
+            defaultBuildQuery(introspectionResults, fieldNameConvention),
+        introspection: buildIntrospection(fieldNameConvention),
+    };
+
     const dPOptions = merge({}, defaultOptions, customOptions);
 
     if (dPOptions.introspection?.operationNames) {
         let operationNames = dPOptions.introspection.operationNames;
-
-        if (bulkActionsEnabled)
-            operationNames = merge(operationNames, bulkActionOperationNames);
 
         extensions.forEach(({ introspectionOperationNames }) => {
             if (introspectionOperationNames)

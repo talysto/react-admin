@@ -25,6 +25,11 @@ import * as gqlTypes from 'graphql-ast-types-browser';
 import getFinalType from './getFinalType';
 import { getGqlType } from './getGqlType';
 
+import {
+    FieldNameConventions,
+    FieldNameConventionEnum,
+} from './fieldNameConventions';
+
 type SparseFields = (string | { [k: string]: SparseFields })[];
 type ExpandedSparseFields = { linkedType?: string; fields: SparseFields }[];
 
@@ -64,26 +69,30 @@ function processSparseFields(
     return { fields, linkedSparseFields };
 }
 
-export default (introspectionResults: IntrospectionResult) => (
+export default (
+    introspectionResults: IntrospectionResult,
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
+) => (
     resource: IntrospectedResource,
     raFetchMethod: string,
     queryType: IntrospectionField,
     variables: any
 ) => {
     let { sortField, sortOrder, ...metaVariables } = variables;
-
-    const apolloArgs = buildApolloArgs(queryType, variables);
-    const args = buildArgs(queryType, variables);
-
     const sparseFields = metaVariables.meta?.sparseFields;
     if (sparseFields) delete metaVariables.meta.sparseFields;
-
-    const metaArgs = buildArgs(queryType, metaVariables);
 
     const fields = buildFields(introspectionResults)(
         resource.type.fields,
         sparseFields
     );
+    const apolloArgs = buildApolloArgs(
+        queryType,
+        variables,
+        fieldNameConvention
+    );
+    const args = buildArgs(queryType, variables, fieldNameConvention);
+    const metaArgs = buildArgs(queryType, metaVariables, fieldNameConvention);
 
     if (
         raFetchMethod === GET_LIST ||
@@ -102,7 +111,11 @@ export default (introspectionResults: IntrospectionResult) => (
                         gqlTypes.selectionSet(fields)
                     ),
                     gqlTypes.field(
-                        gqlTypes.name(`_${queryType.name}Meta`),
+                        gqlTypes.name(
+                            FieldNameConventions[
+                                fieldNameConvention
+                            ].listQueryToMeta(queryType.name)
+                        ),
                         gqlTypes.name('total'),
                         metaArgs,
                         null,
@@ -283,7 +296,8 @@ export const buildFragments = (introspectionResults: IntrospectionResult) => (
 
 export const buildArgs = (
     query: IntrospectionField,
-    variables: any
+    variables: any,
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
 ): ArgumentNode[] => {
     if (query.args.length === 0) {
         return [];
@@ -293,7 +307,15 @@ export const buildArgs = (
         k => typeof variables[k] !== 'undefined'
     );
     let args = query.args
-        .filter(a => validVariables.includes(a.name))
+        .filter(
+            a =>
+                validVariables.includes(a.name) ||
+                validVariables.includes(
+                    FieldNameConventions[fieldNameConvention].strWithConvention(
+                        a.name
+                    )
+                )
+        )
         .reduce(
             (acc, arg) => [
                 ...acc,
@@ -310,7 +332,8 @@ export const buildArgs = (
 
 export const buildApolloArgs = (
     query: IntrospectionField,
-    variables: any
+    variables: any,
+    fieldNameConvention: FieldNameConventionEnum = FieldNameConventionEnum.CAMEL
 ): VariableDefinitionNode[] => {
     if (query.args.length === 0) {
         return [];
@@ -321,7 +344,15 @@ export const buildApolloArgs = (
     );
 
     let args = query.args
-        .filter(a => validVariables.includes(a.name))
+        .filter(
+            a =>
+                validVariables.includes(a.name) ||
+                validVariables.includes(
+                    FieldNameConventions[fieldNameConvention].strWithConvention(
+                        a.name
+                    )
+                )
+        )
         .reduce((acc, arg) => {
             return [
                 ...acc,

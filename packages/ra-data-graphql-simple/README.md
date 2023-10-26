@@ -218,6 +218,18 @@ Pass the introspection options to the `buildApolloProvider` function:
 buildApolloProvider({ introspection: introspectionOptions });
 ```
 
+### Support a snake_case GraphQL API interface
+
+If your GraphQL API Interface expects snake_case field name conventions, simply provide the `FieldNameConventionEnum.SNAKE` as an option to `buildGraphQLProvider`.
+
+```js
+import { FieldNameConventionEnum } from 'ra-data-graphql-simple'
+
+buildGraphQLProvider({ fieldNameConvention: FieldNameConventionEnum.SNAKE });
+```
+
+The default field name convention is CamelCase.
+
 ## Sparse Field Support for Queries and Mutations
 
 By default, for every API call this data provider returns all top level fields in your GraphQL schema as well as association objects containing the association's ID. If you would like to implement sparse field support for your requests, you can request the specific fields you want in a request by passing them to the dataProvider via the available [meta param](https://marmelab.com/react-admin/Actions.html#meta-parameter). For example,
