@@ -2,7 +2,7 @@ import merge from 'lodash/merge';
 import buildDataProvider, {
     BuildQueryFactory,
     Options,
-    defaultOptions as raDataGraphqlDefaultOptions,
+    defaultOptions as baseDefaultOptions,
 } from 'ra-data-graphql';
 import { DELETE_MANY, DataProvider, Identifier, UPDATE_MANY } from 'ra-core';
 import pluralize from 'pluralize';
@@ -17,7 +17,7 @@ export { default as buildVariables } from './buildVariables';
 export { default as getResponseParser } from './getResponseParser';
 
 const defaultOptions = {
-    ...raDataGraphqlDefaultOptions,
+    ...baseDefaultOptions,
     buildQuery: defaultBuildQuery,
 };
 
