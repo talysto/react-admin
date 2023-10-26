@@ -30,8 +30,16 @@ import {
     FieldNameConventionEnum,
 } from './fieldNameConventions';
 
+const defaultFieldsResolutionTypes = [TypeKind.SCALAR]; // unless sparse fields are specified, default fields requested in queries / mutations will be scalars only
+
 type SparseFields = (string | { [k: string]: SparseFields })[];
 type ExpandedSparseFields = { linkedType?: string; fields: SparseFields }[];
+
+function getType(fieldType) {
+    if (fieldType.ofType == null) return fieldType.kind;
+
+    return getType(fieldType.ofType);
+}
 
 function processSparseFields(
     resourceFields: readonly IntrospectionField[],
@@ -41,7 +49,12 @@ function processSparseFields(
     linkedSparseFields: ExpandedSparseFields;
 } {
     if (!sparseFields || sparseFields.length == 0)
-        return { fields: resourceFields, linkedSparseFields: [] }; // default (which is all available resource fields) if sparse fields not specified
+        return {
+            fields: resourceFields.filter(field =>
+                defaultFieldsResolutionTypes.includes(getType(field.type))
+            ),
+            linkedSparseFields: [],
+        }; // default (which is scalar resource fields) if sparse fields not specified
 
     const resourceFNames = resourceFields.map(f => f.name);
 
