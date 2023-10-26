@@ -18,17 +18,65 @@ import * as gqlTypes from 'graphql-ast-types-browser';
 import getFinalType from './getFinalType';
 import { getGqlType } from './getGqlType';
 
+type SparseFields = (string | { [k: string]: SparseFields })[];
+type ExpandedSparseFields = { linkedType?: string; fields: SparseFields }[];
+
+function processSparseFields(
+    resourceFields: readonly IntrospectionField[],
+    sparseFields: SparseFields
+): {
+    fields: readonly IntrospectionField[];
+    linkedSparseFields: ExpandedSparseFields;
+} {
+    if (!sparseFields || sparseFields.length == 0)
+        return { fields: resourceFields, linkedSparseFields: [] }; // default (which is all available resource fields) if sparse fields not specified
+
+    const resourceFNames = resourceFields.map(f => f.name);
+
+    const expandedSparseFields: ExpandedSparseFields = sparseFields.map(sP => {
+        if (typeof sP == 'string') return { fields: [sP] };
+
+        const [linkedType, linkedSparseFields] = Object.entries(sP)[0];
+
+        return { linkedType, fields: linkedSparseFields };
+    });
+
+    const permittedSparseFields = expandedSparseFields.filter(sF =>
+        resourceFNames.includes((sF.linkedType || sF.fields[0]) as string)
+    ); // ensure the requested fields are available
+
+    const sparseFNames = permittedSparseFields.map(
+        sF => sF.linkedType || sF.fields[0]
+    );
+
+    const fields = resourceFields.filter(rF => sparseFNames.includes(rF.name));
+    const linkedSparseFields = permittedSparseFields.filter(
+        sF => !!sF.linkedType
+    ); // sparse fields to be used for linked resources / types
+
+    return { fields, linkedSparseFields };
+}
+
 export default (introspectionResults: IntrospectionResult) => (
     resource: IntrospectedResource,
     raFetchMethod: string,
     queryType: IntrospectionField,
     variables: any
 ) => {
-    const { sortField, sortOrder, ...metaVariables } = variables;
+    let { sortField, sortOrder, ...metaVariables } = variables;
+
     const apolloArgs = buildApolloArgs(queryType, variables);
     const args = buildArgs(queryType, variables);
+
+    const sparseFields = metaVariables.meta?.sparseFields;
+    if (sparseFields) delete metaVariables.meta.sparseFields;
+
     const metaArgs = buildArgs(queryType, metaVariables);
-    const fields = buildFields(introspectionResults)(resource.type.fields);
+
+    const fields = buildFields(introspectionResults)(
+        resource.type.fields,
+        sparseFields
+    );
 
     if (
         raFetchMethod === GET_LIST ||
@@ -102,8 +150,13 @@ export default (introspectionResults: IntrospectionResult) => (
 export const buildFields = (
     introspectionResults: IntrospectionResult,
     paths = []
-) => fields =>
-    fields.reduce((acc, field) => {
+) => (fields: readonly IntrospectionField[], sparseFields?: SparseFields) => {
+    const { fields: requestedFields, linkedSparseFields } = processSparseFields(
+        fields,
+        sparseFields
+    );
+
+    return requestedFields.reduce((acc, field) => {
         const type = getFinalType(field.type);
 
         if (type.name.startsWith('_')) {
@@ -119,6 +172,15 @@ export const buildFields = (
         );
 
         if (linkedResource) {
+            const linkedResourceSparseFields = linkedSparseFields.find(
+                lSP => lSP.linkedType == field.name
+            )?.fields || ['id']; // default to id if no sparse fields specified for linked resource
+
+            const linkedResourceFields = buildFields(introspectionResults)(
+                linkedResource.type.fields,
+                linkedResourceSparseFields
+            );
+
             return [
                 ...acc,
                 gqlTypes.field(
@@ -126,7 +188,7 @@ export const buildFields = (
                     null,
                     null,
                     null,
-                    gqlTypes.selectionSet([gqlTypes.field(gqlTypes.name('id'))])
+                    gqlTypes.selectionSet(linkedResourceFields)
                 ),
             ];
         }
@@ -138,6 +200,7 @@ export const buildFields = (
         if (linkedType && !paths.includes(linkedType.name)) {
             const possibleTypes =
                 (linkedType as IntrospectionUnionType).possibleTypes || [];
+
             return [
                 ...acc,
                 gqlTypes.field(
@@ -150,7 +213,12 @@ export const buildFields = (
                         ...buildFields(introspectionResults, [
                             ...paths,
                             linkedType.name,
-                        ])((linkedType as IntrospectionObjectType).fields),
+                        ])(
+                            (linkedType as IntrospectionObjectType).fields,
+                            linkedSparseFields.find(
+                                lSP => lSP.linkedType == field.name
+                            )?.fields
+                        ),
                     ])
                 ),
             ];
@@ -160,6 +228,7 @@ export const buildFields = (
         // ending with endless circular dependencies
         return acc;
     }, []);
+};
 
 export const buildFragments = (introspectionResults: IntrospectionResult) => (
     possibleTypes: readonly IntrospectionNamedTypeRef<IntrospectionObjectType>[]
