@@ -8,6 +8,7 @@ import { DELETE_MANY, DataProvider, Identifier, UPDATE_MANY } from 'ra-core';
 import pluralize from 'pluralize';
 
 import defaultBuildQuery from './buildQuery';
+import { DataProviderExtension, DataProviderExtensions } from './extensions';
 
 export const buildQuery = defaultBuildQuery;
 export { buildQueryFactory } from './buildQuery';
@@ -20,6 +21,8 @@ const defaultOptions = {
     buildQuery: defaultBuildQuery,
 };
 
+export { defaultOptions, DataProviderExtensions };
+
 const bulkActionOperationNames = {
     [DELETE_MANY]: resource => `delete${pluralize(resource.name)}`,
     [UPDATE_MANY]: resource => `update${pluralize(resource.name)}`,
@@ -29,19 +32,30 @@ export default (
     options: Omit<Options, 'buildQuery'> & {
         buildQuery?: BuildQueryFactory;
         bulkActionsEnabled?: boolean;
+        extensions?: DataProviderExtension[];
     }
 ): Promise<DataProvider> => {
-    const { bulkActionsEnabled = false, ...dPOptions } = merge(
-        {},
-        defaultOptions,
-        options
-    );
+    const { bulkActionsEnabled = false, extensions = [], ...rest } = options;
+
+    const dPOptions = merge({}, defaultOptions, rest);
 
     if (bulkActionsEnabled && dPOptions.introspection?.operationNames)
         dPOptions.introspection.operationNames = merge(
             dPOptions.introspection.operationNames,
             bulkActionOperationNames
         );
+
+    extensions
+        .filter(
+            ({ introspectionOperationNames }) => !!introspectionOperationNames
+        )
+        .forEach(({ introspectionOperationNames }) => {
+            if (dPOptions.introspection?.operationNames)
+                dPOptions.introspection.operationNames = merge(
+                    dPOptions.introspection.operationNames,
+                    introspectionOperationNames
+                );
+        });
 
     return buildDataProvider(dPOptions).then(defaultDataProvider => {
         return {
@@ -92,6 +106,13 @@ export default (
                           });
                       },
                   }),
+            ...extensions.reduce(
+                (acc, { methodFactory, factoryArgs = [] }) => ({
+                    ...acc,
+                    ...methodFactory(defaultDataProvider, ...factoryArgs),
+                }),
+                {}
+            ),
         };
     });
 };
